@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Transaction } from '@multiversx/sdk-core/out';
 import { BasePatternDetector, VulnerabilityPattern } from '../models/pattern.model';
+import { GeminiService } from '../gemini-service';
 
 /**
  * Detector for access control vulnerabilities in MultiversX smart contracts
@@ -11,6 +12,9 @@ import { BasePatternDetector, VulnerabilityPattern } from '../models/pattern.mod
 @Injectable()
 export class AccessControlDetector extends BasePatternDetector {
   private readonly logger = new Logger(AccessControlDetector.name);
+  constructor(private readonly geminiService: GeminiService) {
+    super();
+  }
 
   /**
    * Pattern definition for access control vulnerabilities
@@ -21,6 +25,7 @@ export class AccessControlDetector extends BasePatternDetector {
     description: 'Detects missing or insufficient access controls that could allow unauthorized users to access privileged functions.',
     severity: 'high',
     detector: this.detectAccessControlIssue.bind(this),
+    category: ''
   };
 
   /**
@@ -357,5 +362,28 @@ export class AccessControlDetector extends BasePatternDetector {
            '7. Add events to log all administrative actions for transparency. ' +
            '8. Consider timelock mechanisms for sensitive operations. ' +
            '9. Review all state-changing functions to ensure proper access control.';
+  }
+
+  /**
+   * Analyze smart contract code for access control vulnerabilities using GeminiService
+   * @param contractCode The contract code to analyze
+   * @param fileName The name of the file containing the contract code
+   * @returns Analysis result with access control vulnerabilities
+   */
+  async analyze(contractCode: string, fileName: string): Promise<any> {
+    const analysis = await this.geminiService.analyzeSmartContract(contractCode, fileName);
+    
+    // Filter only access control vulnerabilities
+    const accessControlVulnerabilities = analysis.vulnerabilities?.filter(
+      vuln => vuln.type.toLowerCase().includes('access control') || 
+              vuln.type.toLowerCase().includes('permission') ||
+              vuln.type.toLowerCase().includes('authorization')
+    ) || [];
+    
+    return {
+      vulnerabilities: accessControlVulnerabilities,
+      count: accessControlVulnerabilities.length,
+      found: accessControlVulnerabilities.length > 0
+    };
   }
 }

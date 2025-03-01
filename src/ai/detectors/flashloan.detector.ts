@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Transaction } from '@multiversx/sdk-core/out';
 import { BasePatternDetector, VulnerabilityPattern } from '../models/pattern.model';
+import { GeminiService } from '../gemini-service';
 
 /**
  * Detector for flash loan attack vulnerabilities in MultiversX smart contracts
@@ -11,6 +12,9 @@ import { BasePatternDetector, VulnerabilityPattern } from '../models/pattern.mod
 @Injectable()
 export class FlashLoanDetector extends BasePatternDetector {
   private readonly logger = new Logger(FlashLoanDetector.name);
+  constructor(private readonly geminiService: GeminiService) {
+    super();
+  }
 
   /**
    * Pattern definition for flash loan attack vulnerabilities
@@ -21,6 +25,7 @@ export class FlashLoanDetector extends BasePatternDetector {
     description: 'Detects patterns consistent with flash loan attacks, where large sums are borrowed, used to manipulate markets or exploit vulnerabilities, and repaid in the same transaction.',
     severity: 'high',
     detector: this.detectFlashLoanPattern.bind(this),
+    category: ''
   };
 
   /**
@@ -310,5 +315,27 @@ export class FlashLoanDetector extends BasePatternDetector {
            '4. Consider adding a cooldown period between significant state-changing operations. ' +
            '5. Implement rate limiting or maximum transaction value limits. ' +
            '6. Thoroughly validate all external inputs before processing.';
+  }
+
+  /**
+   * Analyze smart contract code for flash loan vulnerabilities using GeminiService
+   * @param contractCode The contract code to analyze
+   * @param fileName The name of the file containing the contract code
+   * @returns Analysis result with flash loan vulnerabilities
+   */
+  async analyze(contractCode: string, fileName: string): Promise<any> {
+    const analysis = await this.geminiService.analyzeSmartContract(contractCode, fileName);
+    
+    // Filter only flash loan vulnerabilities
+    const flashloanVulnerabilities = analysis.vulnerabilities?.filter(
+      vuln => vuln.type.toLowerCase().includes('flash loan') || 
+              vuln.type.toLowerCase().includes('flashloan')
+    ) || [];
+    
+    return {
+      vulnerabilities: flashloanVulnerabilities,
+      count: flashloanVulnerabilities.length,
+      found: flashloanVulnerabilities.length > 0
+    };
   }
 }

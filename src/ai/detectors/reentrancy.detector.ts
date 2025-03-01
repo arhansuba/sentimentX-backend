@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Transaction } from '@multiversx/sdk-core/out';
 import { BasePatternDetector, VulnerabilityPattern } from '../models/pattern.model';
+import { GeminiService } from '../gemini-service';
 
 /**
  * Detector for reentrancy vulnerabilities in MultiversX smart contracts
@@ -11,6 +12,9 @@ import { BasePatternDetector, VulnerabilityPattern } from '../models/pattern.mod
 @Injectable()
 export class ReentrancyDetector extends BasePatternDetector {
   private readonly logger = new Logger(ReentrancyDetector.name);
+  constructor(private readonly geminiService: GeminiService) {
+    super();
+  }
 
   /**
    * Pattern definition for reentrancy vulnerabilities
@@ -21,6 +25,7 @@ export class ReentrancyDetector extends BasePatternDetector {
     description: 'Detects potential reentrancy vulnerabilities where an external contract can recursively call back into the vulnerable contract before the first invocation is complete.',
     severity: 'critical',
     detector: this.detectReentrancyPattern.bind(this),
+    category: ''
   };
 
   /**
@@ -234,6 +239,16 @@ export class ReentrancyDetector extends BasePatternDetector {
   }
 
   /**
+   * Log detailed information about detected vulnerabilities
+   * @param transaction The transaction that was analyzed
+   * @param contractCode The contract code that was analyzed
+   */
+  private logDetectionDetails(transaction: Transaction, contractCode?: string): void {
+    const details = this.getDetails(transaction, contractCode);
+    this.logger.log(`Detection details: ${details}`);
+  }
+
+  /**
    * Get recommendations on how to fix reentrancy vulnerabilities
    * @returns Human-readable recommendations
    */
@@ -243,5 +258,28 @@ export class ReentrancyDetector extends BasePatternDetector {
            '2. Update all state variables before making any external calls. ' +
            '3. Make external calls after all state changes. ' +
            'Additionally, consider implementing a reentrancy guard using a mutex pattern to prevent multiple calls to sensitive functions.';
+  }
+
+  /**
+   * Analyze smart contract code for reentrancy vulnerabilities using GeminiService
+   * @param contractCode The contract code to analyze
+   * @param fileName The name of the file containing the contract code
+   * @returns Analysis result with reentrancy vulnerabilities
+   */
+  detect(transaction: Transaction, contractCode?: string): boolean {
+    try {
+      const data = this.getTransactionData(transaction);
+      const hasTransferCall = data.includes('transfer') && data.includes('call');
+      const hasSendBeforeState = data.includes('send') && data.includes('storage');
+      
+      if (contractCode) {
+        return this.analyzeContractCode(contractCode) || hasTransferCall || hasSendBeforeState;
+      }
+      
+      return hasTransferCall || hasSendBeforeState;
+    } catch (error) {
+      this.logger.error(`Error in reentrancy detection: ${error.message}`);
+      return false;
+    }
   }
 }

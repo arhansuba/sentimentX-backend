@@ -8,6 +8,17 @@ import { CACHE } from '../utils/constants';
 
 @Injectable()
 export class ContractService {
+  async findOne(contractId: string): Promise<Contract> {
+    // Implementation to find and return a contract by its ID
+    const contract = this.contracts.get(contractId);
+    if (!contract) {
+      throw new Error(`Contract with ID ${contractId} not found`);
+    }
+    return contract;
+  }
+  update(contractId: string, arg1: { securityScore: any; lastAnalyzed: Date; }) {
+    throw new Error('Method not implemented.');
+  }
   private readonly logger = new Logger(ContractService.name);
   private readonly contracts: Map<string, Contract> = new Map();
 

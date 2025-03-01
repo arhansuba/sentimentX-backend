@@ -1,4 +1,6 @@
-import { VulnerabilityPattern } from './patterns';
+//import { VulnerabilityPattern } from './patterns';
+import { Injectable } from '@nestjs/common';
+import { VulnerabilityPattern } from './models/pattern.model';
 
 /**
  * Risk level classification for detected issues
@@ -25,6 +27,44 @@ const SEVERITY_WEIGHTS = {
 
 const ANOMALY_WEIGHT = 20;
 
+@Injectable()
+export class SecurityScoring {
+  // Calculate security score based on vulnerabilities
+  calculateSecurityScore(vulnerabilities: any[]): number {
+    if (!vulnerabilities || vulnerabilities.length === 0) {
+      return 100; // Perfect score if no vulnerabilities
+    }
+    
+    // Assign weights to different severity levels
+    const severityWeights = {
+      'Critical': 30,
+      'High': 15,
+      'Medium': 7,
+      'Low': 3
+    };
+    
+    // Calculate total penalty based on vulnerabilities
+    let totalPenalty = 0;
+    for (const vuln of vulnerabilities) {
+      const severity = vuln.severity || 'Low';
+      totalPenalty += severityWeights[severity] || 0;
+    }
+    
+    // Ensure score doesn't go below 0
+    const score = Math.max(0, 100 - totalPenalty);
+    
+    return Math.round(score);
+  }
+  
+  // Get risk level based on security score
+  getRiskLevel(score: number): string {
+    if (score >= 90) return 'Low Risk';
+    if (score >= 70) return 'Moderate Risk';
+    if (score >= 40) return 'High Risk';
+    return 'Critical Risk';
+  }
+}
+
 /**
  * Calculate a risk score based on detected patterns and anomalies
  * @param patterns Array of vulnerability patterns detected
@@ -35,21 +75,20 @@ export function calculateRiskScore(
   patterns: VulnerabilityPattern[],
   isAnomaly: boolean,
 ): RiskScore {
-  // Start with a base score of 0
-  let score = 0;
+  const securityScoring = new SecurityScoring();
   
-  // Add score for each detected pattern based on severity
-  for (const pattern of patterns) {
-    score += SEVERITY_WEIGHTS[pattern.severity] || 0;
-  }
+  // Convert patterns to vulnerabilities format
+  const vulnerabilities = patterns.map(pattern => ({
+    severity: pattern.severity.charAt(0).toUpperCase() + pattern.severity.slice(1)
+  }));
+  
+  // Calculate base score using SecurityScoring class
+  let score = securityScoring.calculateSecurityScore(vulnerabilities);
   
   // Add score for statistical anomalies
   if (isAnomaly) {
-    score += ANOMALY_WEIGHT;
+    score = Math.max(0, score - ANOMALY_WEIGHT);
   }
-  
-  // Cap score at 100
-  score = Math.min(score, 100);
   
   // Determine risk level based on score
   let level: RiskLevel = 'none';

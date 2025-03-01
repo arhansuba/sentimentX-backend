@@ -25,6 +25,11 @@ export interface VulnerabilityPattern {
   severity: 'critical' | 'high' | 'medium' | 'low';
 
   /**
+   * Category of the vulnerability
+   */
+  category: string;
+
+  /**
    * Function that detects if the pattern exists in a transaction or contract
    * @param transaction Transaction to analyze
    * @param contractCode Optional contract code for deeper analysis
@@ -106,3 +111,51 @@ export abstract class BasePatternDetector {
    */
   abstract getRecommendations(): string;
 }
+
+export const VULNERABILITY_PATTERNS: VulnerabilityPattern[] = [
+  {
+    id: 'REENTRANCY-001',
+    name: 'Reentrancy Vulnerability',
+    description: 'Contract state is modified after external calls, allowing potential reentrancy attacks',
+    severity: 'critical',
+    category: 'Reentrancy',
+    detector: (transaction: Transaction, contractCode?: string) => {
+      // Implement the detection logic for Reentrancy
+      return false;
+    }
+  },
+  {
+    id: 'OVERFLOW-001',
+    name: 'Integer Overflow/Underflow',
+    description: 'Arithmetic operations can lead to overflow/underflow without proper checks',
+    severity: 'high',
+    category: 'Arithmetic',
+    detector: (transaction: Transaction, contractCode?: string) => {
+      // Implement the detection logic for Overflow/Underflow
+      return false;
+    }
+  },
+  {
+    id: 'ACCESS-CONTROL-001',
+    name: 'Missing Access Control',
+    description: 'Critical functions lack proper access control mechanisms',
+    severity: 'high',
+    category: 'Access Control',
+    detector: (transaction: Transaction, contractCode?: string) => {
+      // Implement the detection logic for Access Control
+      return false;
+    }
+  },
+  {
+    id: 'FLASHLOAN-001',
+    name: 'Flash Loan Attack Vulnerability',
+    description: 'Contract is vulnerable to price manipulation via flash loans',
+    severity: 'critical',
+    category: 'Price Manipulation',
+    detector: (transaction: Transaction, contractCode?: string) => {
+      // Implement the detection logic for Flash Loan Attack
+      return false;
+    }
+  },
+  // Add more patterns as needed
+];

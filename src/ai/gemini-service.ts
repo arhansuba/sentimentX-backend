@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as fs from 'fs';
 import {
   GoogleGenerativeAI,
   HarmCategory,
@@ -272,6 +273,22 @@ export class GeminiService {
     } catch (error) {
       this.logger.error(`Error calling Gemini API: ${error.message}`);
       return null;
+    }
+  }
+
+  /**
+   * Analyzes a smart contract file for potential vulnerabilities
+   * @param filePath The path to the smart contract file
+   * @returns Analysis results from Gemini
+   */
+  async analyzeSmartContractFile(filePath: string): Promise<any> {
+    try {
+      const contractCode = fs.readFileSync(filePath, 'utf8');
+      const fileName = filePath.split('/').pop() || 'unknown';
+      return this.analyzeSmartContract(contractCode, fileName);
+    } catch (error) {
+      this.logger.error('Error reading contract file:', error);
+      throw new Error(`Failed to read contract file: ${error.message}`);
     }
   }
 }

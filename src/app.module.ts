@@ -3,9 +3,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable prettier/prettier */
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ERDNEST_CONFIG_SERVICE } from '@multiversx/sdk-nestjs-common';
 import { MetricsModule } from './metrics.module'; // Ensure correct import path
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 // Import controllers
 import { AppController } from './app.controller';
@@ -22,7 +23,7 @@ import { AlertService } from './services/alert.service';
 import { TransactionService } from './services/transaction.service';
 import { ContractService } from './services/contract.service';
 import { CacheService } from './services/cache.service';
-//import { MetricsService } from '@multiversx/sdk-nestjs-monitoring';
+import { MetricsService } from './services/metrics.service';
 
 // Import AI components
 import { SecurityDetector } from './ai/detector';
@@ -31,11 +32,17 @@ import { ReentrancyDetector } from './ai/detectors/reentrancy.detector';
 import { FlashLoanDetector } from './ai/detectors/flashloan.detector';
 import { OverflowDetector } from './ai/detectors/overflow.detector';
 import { AccessControlDetector } from './ai/detectors/access-control.detector';
+import { SecurityScoring } from './ai/scoring';
 
 // Import configuration
 import { AppConfig } from './config/app.config';
 import { MultiversXConfig } from './config/multiversx.config';
 import { SdkNestjsConfigServiceImpl } from './config/sdk-nestjs-config.service';
+
+// Import entities
+import { Contract } from './entities/contract.entity';
+import { Alert } from './entities/alert.entity';
+import { Transaction } from '@multiversx/sdk-core/out/transaction';
 
 @Module({
   imports: [
@@ -51,6 +58,23 @@ import { SdkNestjsConfigServiceImpl } from './config/sdk-nestjs-config.service';
         application: 'mx-ai-smart-contract-sentinel',
       },
     }),
+
+    // TypeORM
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        type: 'postgres',
+        host: configService.get('DB_HOST', 'localhost'),
+        port: +configService.get('DB_PORT', '5432'),
+        username: configService.get('DB_USERNAME', 'postgres'),
+        password: configService.get('DB_PASSWORD', 'postgres'),
+        database: configService.get('DB_DATABASE', 'sentinel'),
+        entities: [Contract, Alert, Transaction],
+        synchronize: configService.get('NODE_ENV') !== 'production',
+      }),
+      inject: [ConfigService],
+    }),
+    TypeOrmModule.forFeature([Contract, Alert, Transaction]),
   ],
   controllers: [
     AppController,
@@ -86,6 +110,8 @@ import { SdkNestjsConfigServiceImpl } from './config/sdk-nestjs-config.service';
     FlashLoanDetector,
     OverflowDetector,
     AccessControlDetector,
+    MetricsService,
+    SecurityScoring,
   ],
 })
 export class AppModule {}

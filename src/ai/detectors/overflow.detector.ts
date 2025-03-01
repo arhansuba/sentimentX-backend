@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Transaction } from '@multiversx/sdk-core/out';
 import { BasePatternDetector, VulnerabilityPattern } from '../models/pattern.model';
+import { GeminiService } from '../gemini-service';
 
 /**
  * Detector for integer overflow/underflow vulnerabilities in MultiversX smart contracts
@@ -12,6 +13,9 @@ import { BasePatternDetector, VulnerabilityPattern } from '../models/pattern.mod
 @Injectable()
 export class OverflowDetector extends BasePatternDetector {
   private readonly logger = new Logger(OverflowDetector.name);
+  constructor(private readonly geminiService: GeminiService) {
+    super();
+  }
 
   /**
    * Pattern definition for integer overflow/underflow vulnerabilities
@@ -22,6 +26,7 @@ export class OverflowDetector extends BasePatternDetector {
     description: 'Detects potential integer overflow or underflow vulnerabilities, where arithmetic operations can wrap around due to fixed-size integer types.',
     severity: 'high',
     detector: this.detectOverflowPattern.bind(this),
+    category: ''
   };
 
   /**
@@ -48,6 +53,27 @@ export class OverflowDetector extends BasePatternDetector {
       this.logger.error(`Error in overflow detection: ${error.message}`);
       return false;
     }
+  }
+
+  /**
+   * Analyze smart contract code for overflow/underflow vulnerabilities using GeminiService
+   * @param contractCode The contract code to analyze
+   * @param fileName The name of the file containing the contract code
+   * @returns Analysis result with overflow/underflow vulnerabilities
+   */
+  async detectVulnerabilities(contractCode: string, fileName: string): Promise<any> {
+    const analysis = await this.geminiService.analyzeSmartContract(contractCode, fileName);
+    
+    // Filter only overflow/underflow vulnerabilities
+    const overflowVulnerabilities = analysis.vulnerabilities?.filter(
+      vuln => vuln.type.toLowerCase().includes('overflow') || vuln.type.toLowerCase().includes('underflow')
+    ) || [];
+    
+    return {
+      vulnerabilities: overflowVulnerabilities,
+      count: overflowVulnerabilities.length,
+      found: overflowVulnerabilities.length > 0
+    };
   }
 
   /**

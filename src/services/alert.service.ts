@@ -16,6 +16,12 @@ export interface Alert {
 
 @Injectable()
 export class AlertService {
+  create(arg0: { contractId: string; type: any; title: string; description: any; lines: any; impact: any; recommendation: any; timestamp: Date; }) {
+    throw new Error('Method not implemented.');
+  }
+  findByContractId(contractId: string) {
+    throw new Error('Method not implemented.');
+  }
   private readonly logger = new Logger(AlertService.name);
   private nextAlertId = 1;
   private alerts: Map<string, Alert> = new Map();
