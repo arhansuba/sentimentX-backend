@@ -159,34 +159,41 @@ export class AiAnalysisController {
   }
 
   @Post('analyze-code')
-  async analyzeCode(@Body() body: { contractId: string; code: string; fileName: string }) {
-    const { contractId, code, fileName } = body;
+  async analyzeCode(@Body() body: { contractId: string; code: string; fileName: string; isTemporary?: boolean }) {
+    const { contractId, code, fileName, isTemporary } = body;
 
-    const contract: Contract = await this.contractService.findOne(contractId);
-    if (!contract) {
-      throw new NotFoundException(`Contract with ID ${contractId} not found`);
+    // Only look up the contract if not a temporary analysis
+    let contract: Contract | null = null;
+    if (!isTemporary) {
+      contract = await this.contractService.findOne(contractId);
+      if (!contract) {
+        throw new NotFoundException(`Contract with ID ${contractId} not found`);
+      }
     }
 
     const analysis: AnalysisResult = await this.securityDetector.analyzeContract(contractId, code, fileName);
 
-    await this.contractService.update(contractId, {
-      securityScore: analysis.securityScore,
-      lastAnalyzed: new Date(),
-    });
+    // Only update contract and create alerts if not temporary
+    if (!isTemporary) {
+      await this.contractService.update(contractId, {
+        securityScore: analysis.securityScore,
+        lastAnalyzed: new Date(),
+      });
 
-    const alertPromises = analysis.anomalies.map(anomaly =>
-      this.alertService.create({
-        contractId,
-        type: anomaly.severity,
-        title: `${anomaly.severity} Vulnerability: ${anomaly.patternId}`,
-        description: anomaly.description,
-        lines: anomaly.lines,
-        impact: anomaly.impact,
-        recommendation: anomaly.recommendation,
-        timestamp: new Date(),
-      })
-    );
-    await Promise.all(alertPromises);
+      const alertPromises = analysis.anomalies.map(anomaly =>
+        this.alertService.create({
+          contractId,
+          type: anomaly.severity,
+          title: `${anomaly.severity} Vulnerability: ${anomaly.patternId}`,
+          description: anomaly.description,
+          lines: anomaly.lines,
+          impact: anomaly.impact,
+          recommendation: anomaly.recommendation,
+          timestamp: new Date(),
+        })
+      );
+      await Promise.all(alertPromises);
+    }
 
     return analysis;
   }
