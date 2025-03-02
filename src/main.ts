@@ -6,16 +6,25 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as express from 'express';
 
 import { AppModule } from './app.module';
 import { AppConfig } from './config/app.config';
 import { MetricsService } from './services/metrics.service';
+import { DashboardController } from './controllers/dashboard.controller';
+import { DashboardService } from './services/dashboard.service';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   // Create NestJS application
   const app = await NestFactory.create(AppModule);
+  const server = app.getHttpServer();
+  server.keepAliveTimeout = 61 * 1000; // Optional: Adjust timeout if needed
+
+  // Increase payload size limits
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Get app configuration
   const appConfig = app.get(AppConfig);
@@ -27,9 +36,9 @@ async function bootstrap() {
 
   // Configure CORS
   app.enableCors({
-    origin: appConfig.corsOrigins,
+    origin: 'http://localhost:3001', // Replace with your frontend URL
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    credentials: true,
+    credentials: true, // If cookies are involved
   });
 
   // Set up global validation pipes
@@ -43,6 +52,10 @@ async function bootstrap() {
       },
     }),
   );
+
+  // Register controllers and services
+  app.use('/api/dashboard', DashboardController);
+  app.use('/api/dashboard', DashboardService);
 
   // Get metrics service for monitoring
   try {
@@ -87,7 +100,7 @@ async function bootstrap() {
   SwaggerModule.setup('api-docs', app, document);
 
   // Start the server
-  await app.listen(appConfig.port, appConfig.host);
+  await app.listen(3000); // Backend listens on port 3000
 
   const url = await app.getUrl();
   logger.log(`Server running on ${url}`);

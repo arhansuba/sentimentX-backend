@@ -102,14 +102,18 @@ export class MultiversXConfig {
    * Get a MultiversX proxy provider
    */
   public getProxyProvider(): ProxyNetworkProvider {
-    return new ProxyNetworkProvider(this.gatewayUrl);
+    return new ProxyNetworkProvider(this.gatewayUrl, {
+      clientName: 'sentinel-backend', // Add a descriptive name for your app
+    });
   }
 
   /**
    * Get a MultiversX API provider
    */
   public getApiProvider(): ApiNetworkProvider {
-    return new ApiNetworkProvider(this.apiUrl);
+    return new ApiNetworkProvider(this.apiUrl, {
+      clientName: 'sentinel-backend', // Add a descriptive name for your app
+    });
   }
 
   /**

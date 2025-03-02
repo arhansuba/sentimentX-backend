@@ -7,6 +7,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ERDNEST_CONFIG_SERVICE } from '@multiversx/sdk-nestjs-common';
 import { MetricsModule } from './metrics.module'; // Ensure correct import path
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AlertModule } from './alert/alert.module';
+import { ContractModule } from './contract/contract.module';
 
 // Import controllers
 import { AppController } from './app.controller';
@@ -15,6 +17,7 @@ import { AlertController } from './controllers/alert.controller';
 import { TransactionController } from './controllers/transaction.controller';
 import { MetricsController } from './controllers/metrics.controller';
 import { AiAnalysisController } from './controllers/ai-analysis.controller';
+import { DashboardController } from './dashboard/dashboard.controller';
 
 // Import services
 import { AppService } from './app.service';
@@ -24,6 +27,8 @@ import { TransactionService } from './services/transaction.service';
 import { ContractService } from './services/contract.service';
 import { CacheService } from './services/cache.service';
 import { MetricsService } from './services/metrics.service';
+import { GitHubService } from './services/github.service';
+import { DashboardService } from './dashboard/dashboard.service';
 
 // Import AI components
 import { SecurityDetector } from './ai/detector';
@@ -58,23 +63,8 @@ import { Transaction } from '@multiversx/sdk-core/out/transaction';
         application: 'mx-ai-smart-contract-sentinel',
       },
     }),
-
-    // TypeORM
-    TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get('DB_HOST', 'localhost'),
-        port: +configService.get('DB_PORT', '5432'),
-        username: configService.get('DB_USERNAME', 'postgres'),
-        password: configService.get('DB_PASSWORD', 'postgres'),
-        database: configService.get('DB_DATABASE', 'sentinel'),
-        entities: [Contract, Alert, Transaction],
-        synchronize: configService.get('NODE_ENV') !== 'production',
-      }),
-      inject: [ConfigService],
-    }),
-    TypeOrmModule.forFeature([Contract, Alert, Transaction]),
+    AlertModule,
+    ContractModule,
   ],
   controllers: [
     AppController,
@@ -83,6 +73,7 @@ import { Transaction } from '@multiversx/sdk-core/out/transaction';
     TransactionController,
     MetricsController,
     AiAnalysisController,
+    DashboardController,
   ],
   providers: [
     // Application services
@@ -112,6 +103,9 @@ import { Transaction } from '@multiversx/sdk-core/out/transaction';
     AccessControlDetector,
     MetricsService,
     SecurityScoring,
+    GitHubService,
+    DashboardService,
   ],
+  exports: [CacheService], // If used across modules
 })
 export class AppModule {}

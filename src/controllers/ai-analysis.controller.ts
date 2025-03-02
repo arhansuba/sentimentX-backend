@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, NotFoundException, BadRequestException, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, NotFoundException, BadRequestException, UploadedFile, UseInterceptors, InternalServerErrorException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
 import { GeminiService } from '../ai/gemini-service';
 import { BlockchainService } from '../services/blockchain.service';
@@ -11,6 +11,8 @@ import { Multer } from 'multer';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { GitHubService } from '../services/github.service';
+import { Logger } from '@nestjs/common';
 
 // DTOs
 class AnalyzeContractDto {
@@ -45,12 +47,15 @@ interface AnalysisResult {
 @ApiTags('ai-analysis')
 @Controller('ai-analysis')
 export class AiAnalysisController {
+  private readonly logger = new Logger(AiAnalysisController.name);
+
   constructor(
     private readonly geminiService: GeminiService,
     private readonly blockchainService: BlockchainService,
     private readonly securityDetector: SecurityDetector,
     private readonly contractService: ContractService,
     private readonly alertService: AlertService,
+    private readonly githubService: GitHubService,
   ) {}
 
   @Post('contract')
@@ -167,7 +172,6 @@ export class AiAnalysisController {
     await this.contractService.update(contractId, {
       securityScore: analysis.securityScore,
       lastAnalyzed: new Date(),
-      //fileName,
     });
 
     const alertPromises = analysis.anomalies.map(anomaly =>
@@ -211,7 +215,6 @@ export class AiAnalysisController {
       await this.contractService.update(contractId, {
         securityScore: analysis.securityScore,
         lastAnalyzed: new Date(),
-        //fileName: file.originalname,
       });
 
       const alertPromises = analysis.anomalies.map(anomaly =>
@@ -234,6 +237,57 @@ export class AiAnalysisController {
         fs.unlinkSync(filePath);
       } catch (error) {
         console.error('Error cleaning up temporary file:', error);
+      }
+    }
+  }
+
+  @Post('analyze-repo')
+  @ApiOperation({ summary: 'Analyze a GitHub repository for smart contract vulnerabilities' })
+  @ApiBody({ schema: { type: 'object', properties: { repoUrl: { type: 'string' } } } })
+  @ApiResponse({ status: 200, description: 'Analysis results for the repository' })
+  @ApiResponse({ status: 400, description: 'Invalid repository URL' })
+  @ApiResponse({ status: 500, description: 'Failed to clone or analyze repository' })
+  async analyzeRepository(@Body('repoUrl') repoUrl: string) {
+    if (!repoUrl || typeof repoUrl !== 'string') {
+      throw new BadRequestException('Valid GitHub repository URL is required');
+    }
+
+    let clonePath: string | undefined;
+    try {
+      this.logger.log(`Cloning repository: ${repoUrl}`);
+      clonePath = await this.githubService.cloneRepository(repoUrl);
+      this.logger.log(`Repository cloned to: ${clonePath}`);
+
+      const analysisResults = await this.contractService.analyzeRepository(clonePath);
+      this.logger.log(`Analysis completed for ${analysisResults.length} files`);
+
+      if (analysisResults.length === 0) {
+        return {
+          repoUrl,
+          analyzedAt: new Date(),
+          filesAnalyzed: 0,
+          message: 'No Rust smart contracts found in the repository',
+          results: [],
+        };
+      }
+
+      return {
+        repoUrl,
+        analyzedAt: new Date(),
+        filesAnalyzed: analysisResults.length,
+        results: analysisResults,
+      };
+    } catch (error) {
+      this.logger.error(`Error analyzing repository: ${error.message}`);
+      throw new InternalServerErrorException('Failed to analyze repository');
+    } finally {
+      if (clonePath) {
+        try {
+          fs.rmdirSync(clonePath, { recursive: true });
+          this.logger.log(`Cleaned up cloned repository: ${clonePath}`);
+        } catch (cleanupError) {
+          this.logger.error(`Failed to clean up cloned repository: ${cleanupError.message}`);
+        }
       }
     }
   }

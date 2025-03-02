@@ -5,20 +5,11 @@ import { SecurityDetector } from '../ai/detector';
 import { GeminiService } from '../ai/gemini-service';
 import { Contract, ContractVulnerability } from '../entities/contract.entity';
 import { CACHE } from '../utils/constants';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class ContractService {
-  async findOne(contractId: string): Promise<Contract> {
-    // Implementation to find and return a contract by its ID
-    const contract = this.contracts.get(contractId);
-    if (!contract) {
-      throw new Error(`Contract with ID ${contractId} not found`);
-    }
-    return contract;
-  }
-  update(contractId: string, arg1: { securityScore: any; lastAnalyzed: Date; }) {
-    throw new Error('Method not implemented.');
-  }
   private readonly logger = new Logger(ContractService.name);
   private readonly contracts: Map<string, Contract> = new Map();
 
@@ -29,6 +20,19 @@ export class ContractService {
     private readonly geminiService: GeminiService,
   ) {
     this.loadContracts();
+  }
+
+  async findOne(contractId: string): Promise<Contract> {
+    // Implementation to find and return a contract by its ID
+    const contract = this.contracts.get(contractId);
+    if (!contract) {
+      throw new Error(`Contract with ID ${contractId} not found`);
+    }
+    return contract;
+  }
+
+  update(contractId: string, arg1: { securityScore: any; lastAnalyzed: Date; }) {
+    throw new Error('Method not implemented.');
   }
 
   /**
@@ -323,5 +327,42 @@ export class ContractService {
     
     // Save contracts
     await this.saveContracts();
+  }
+
+  /**
+   * Analyzes all Rust smart contracts in a repository directory.
+   * @param directoryPath The path to the cloned repository directory.
+   * @returns An array of analysis results for each .rs file.
+   */
+  async analyzeRepository(directoryPath: string): Promise<{ filePath: string; analysis: any }[]> {
+    const rustFiles = this.findRustFiles(directoryPath);
+    const results = await Promise.all(
+      rustFiles.map(async (filePath) => {
+        const contractCode = fs.readFileSync(filePath, 'utf8');
+        const analysis = await this.geminiService.analyzeSmartContract(filePath, contractCode);
+        return { filePath, analysis };
+      }),
+    );
+    return results;
+  }
+
+  /**
+   * Recursively finds all .rs files in the given directory and its subdirectories.
+   * @param dir The directory to search for .rs files.
+   * @returns An array of file paths to .rs files.
+   */
+  private findRustFiles(dir: string): string[] {
+    let results: string[] = [];
+    const list = fs.readdirSync(dir);
+    list.forEach((file) => {
+      const filePath = path.join(dir, file);
+      const stat = fs.statSync(filePath);
+      if (stat && stat.isDirectory()) {
+        results = results.concat(this.findRustFiles(filePath));
+      } else if (file.endsWith('.rs')) {
+        results.push(filePath);
+      }
+    });
+    return results;
   }
 }

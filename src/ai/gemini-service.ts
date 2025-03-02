@@ -16,6 +16,7 @@ export class GeminiService {
   private readonly genAI: GoogleGenerativeAI;
   private readonly model: any;
   private aiAnalysisEnabled: boolean;
+  private cache = new Map<string, any>();
 
   constructor(
     private readonly configService: ConfigService,
@@ -30,7 +31,7 @@ export class GeminiService {
       return;
     }
 
-    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+    const apiKey = this.appConfig.geminiApiKey;
 
     if (!apiKey) {
       this.logger.warn(
@@ -42,24 +43,7 @@ export class GeminiService {
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.model = this.genAI.getGenerativeModel({
       model: this.appConfig.geminiModel,
-      safetySettings: [
-        {
-          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-      ],
+      safetySettings: this.appConfig.safetySettings,
     });
 
     this.logger.log('Gemini AI service initialized');
@@ -71,6 +55,16 @@ export class GeminiService {
    */
   logWarning(message: string) {
     this.logger.warn(message);
+  }
+
+  /**
+   * Generates a cache key based on contract address and code
+   * @param contractAddress The contract address
+   * @param contractCode The contract code
+   * @returns A unique cache key
+   */
+  private getCacheKey(contractAddress: string, contractCode: string): string {
+    return `${contractAddress}:${Buffer.from(contractCode).toString('base64')}`;
   }
 
   /**
@@ -148,28 +142,13 @@ export class GeminiService {
       const result: GenerateContentResult = await this.model.generateContent(
         prompt,
       );
-      const responseText = result.response.text();
-
-      // Parse the JSON response
-      try {
-        // Extract JSON object from response text - the model sometimes adds extra text
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const analysis = JSON.parse(jsonMatch[0]);
-          return analysis;
-        } else {
-          this.logger.warn(
-            `Failed to extract JSON from Gemini response. Full response: ${responseText}`,
-          );
-          return null;
-        }
-      } catch (parseError) {
-        this.logger.error(
-          `Failed to parse Gemini response as JSON: ${parseError.message}. Full response: ${responseText}`,
-        );
-        return null;
-      }
+      return this.parseResponse(result.response.text());
     } catch (error) {
+      if (error.status === 429) { // Rate limit error
+        this.logger.warn('Rate limit exceeded. Retrying after delay...');
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
+        return this.analyzeTransaction(transaction, contractCode); // Retry
+      }
       this.logger.error(`Error calling Gemini API: ${error.message}`);
       return null;
     }
@@ -191,6 +170,19 @@ export class GeminiService {
       );
       return null;
     }
+
+    if (!contractAddress || !contractCode) {
+      this.logger.warn('Contract address or code is missing.');
+      return null;
+    }
+
+    const cacheKey = this.getCacheKey(contractAddress, contractCode);
+    if (this.cache.has(cacheKey)) {
+      this.logger.log('Returning cached result');
+      return this.cache.get(cacheKey);
+    }
+
+    this.logger.debug(`Analyzing contract ${contractAddress} with code length ${contractCode.length}`);
 
     try {
       // Create prompt for Gemini
@@ -237,7 +229,7 @@ export class GeminiService {
       `;
 
       // Generate content using Gemini API
-      const generationConfig = {
+      const generationConfig = this.appConfig.generationConfig || {
         temperature: 0.2,
         topK: 40,
         topP: 0.95,
@@ -250,27 +242,19 @@ export class GeminiService {
       });
 
       const responseText = result.response.text();
+      this.logger.debug(`Gemini response received: ${responseText.substring(0, 200)}...`);
 
-      // Parse the JSON response
-      try {
-        // Extract JSON object from response text
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const analysis = JSON.parse(jsonMatch[0]);
-          return analysis;
-        } else {
-          this.logger.warn(
-            `Failed to extract JSON from Gemini response. Full response: ${responseText}`,
-          );
-          return null;
-        }
-      } catch (parseError) {
-        this.logger.error(
-          `Failed to parse Gemini response as JSON: ${parseError.message}. Full response: ${responseText}`,
-        );
-        return null;
+      const analysisResult = this.parseResponse(responseText);
+      if (analysisResult) {
+        this.cache.set(cacheKey, analysisResult);
       }
+      return analysisResult;
     } catch (error) {
+      if (error.status === 429) { // Rate limit error
+        this.logger.warn('Rate limit exceeded. Retrying after delay...');
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
+        return this.analyzeSmartContract(contractAddress, contractCode); // Retry
+      }
       this.logger.error(`Error calling Gemini API: ${error.message}`);
       return null;
     }
@@ -282,6 +266,11 @@ export class GeminiService {
    * @returns Analysis results from Gemini
    */
   async analyzeSmartContractFile(filePath: string): Promise<any> {
+    if (!filePath.endsWith('.rs')) {
+      this.logger.warn('File does not appear to be a Rust file.');
+      return null;
+    }
+
     try {
       const contractCode = fs.readFileSync(filePath, 'utf8');
       const fileName = filePath.split('/').pop() || 'unknown';
@@ -289,6 +278,21 @@ export class GeminiService {
     } catch (error) {
       this.logger.error('Error reading contract file:', error);
       throw new Error(`Failed to read contract file: ${error.message}`);
+    }
+  }
+
+  /**
+   * Parses the response text from Gemini API
+   * @param responseText The response text to parse
+   * @returns Parsed JSON object or null if parsing fails
+   */
+  private parseResponse(responseText: string): any | null {
+    try {
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch (error) {
+      this.logger.error(`Parse error: ${error.message}. Response: ${responseText}`);
+      return null;
     }
   }
 }

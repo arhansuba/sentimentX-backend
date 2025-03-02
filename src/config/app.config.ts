@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Environment } from './environment.type';
+import { SafetySetting } from '@google/generative-ai';
+import * as dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 /**
  * Application configuration service
@@ -9,6 +14,8 @@ import { Environment } from './environment.type';
  */
 @Injectable()
 export class AppConfig {
+  safetySettings: SafetySetting[] | undefined;
+  generationConfig: { temperature: number; topK: number; topP: number; maxOutputTokens: number; };
   constructor(private readonly configService: ConfigService) {}
 
   /**
@@ -96,7 +103,7 @@ export class AppConfig {
    * Get the Gemini API key
    */
   public get geminiApiKey(): string {
-    return this.configService.get<string>('GEMINI_API_KEY', '');
+    return process.env.GEMINI_API_KEY || this.configService.get<string>('GEMINI_API_KEY', '');
   }
 
   /**
